@@ -1,0 +1,19 @@
+{
+  "name": "coverage-check-be",
+  "private": true,
+  "scripts": {
+    "start": "bun run dist/main.js",
+    "build": "bun build --minify --outfile dist/main.js --target bun src/main.ts",
+    "dev": "bun --watch src/main.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.7.5",
+    "mysql2": "^3.14.0"
+  }
+}
