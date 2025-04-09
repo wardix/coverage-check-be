@@ -10,10 +10,19 @@ CREATE TABLE IF NOT EXISTS building_types (
   type VARCHAR(255) NOT NULL UNIQUE
 );
 
--- Create villages table
-CREATE TABLE IF NOT EXISTS villages (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL UNIQUE
+-- Create postal_codes table for geographic lookups
+CREATE TABLE IF NOT EXISTS postal_codes (
+  postal_code VARCHAR(10) NOT NULL,
+  village VARCHAR(100) NOT NULL,
+  district VARCHAR(100) NOT NULL,
+  city VARCHAR(100) NOT NULL,
+  province VARCHAR(100) NOT NULL,
+  search_timestamp DATETIME NOT NULL,
+  PRIMARY KEY (postal_code, village),
+  KEY idx_postal_code (postal_code),
+  KEY idx_village (village),
+  KEY idx_district (district),
+  KEY idx_city (city)
 );
 
 -- Create submissions table

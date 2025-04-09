@@ -492,16 +492,15 @@ app.post('/api/building-types', apiKeyAuth, async (c) => {
   }
 })
 
-// Only keep the search villages endpoint - we don't need the get all villages endpoint
-// Search villages endpoint
+// Search villages endpoint now using postal_codes table
 app.get('/api/villages/search', async (c) => {
   try {
     const query = c.req.query('query') || ''
 
-    // If query is empty, return a limited set (e.g., top 20 villages)
+    // If query is empty, return a limited set from postal_codes
     if (!query.trim()) {
       const [rows] = await pool.execute<RowDataPacket[]>(
-        'SELECT name FROM villages ORDER BY name LIMIT 20',
+        "SELECT CONCAT(postal_code, ', ', village, ', ', district, ', ', city, ', ', province) AS name FROM postal_codes LIMIT 5",
       )
       return c.json(rows.map((row) => row.name))
     }
@@ -509,8 +508,13 @@ app.get('/api/villages/search', async (c) => {
     // If query is provided, search with LIKE
     const searchPattern = `%${query}%`
     const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT name FROM villages WHERE name LIKE ? ORDER BY name LIMIT 50',
-      [searchPattern],
+      "SELECT CONCAT(postal_code, ', ', village, ', ', district, ', ', city, ', ', province) AS name FROM postal_codes WHERE postal_code LIKE ? OR village LIKE ? OR district LIKE ? OR city LIKE ? LIMIT 20",
+      [
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+      ],
     )
 
     return c.json(rows.map((row) => row.name))
