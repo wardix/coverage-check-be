@@ -4,6 +4,7 @@
   "scripts": {
     "start": "bun run dist/main.js",
     "build": "bun build --minify --outfile dist/main.js --target bun src/main.ts",
+    "migrate": "bun run scripts/migrate.ts",
     "dev": "bun --watch src/main.ts"
   },
   "devDependencies": {

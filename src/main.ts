@@ -56,89 +56,8 @@ function formatMySQLDateTime(date: Date): string {
 // Create app instance
 const app = new Hono()
 
-// Initialize database tables
-const initDatabase = async () => {
-  try {
-    const connection = await pool.getConnection()
-
-    // Create salesman table
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS salesman (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE
-      )
-    `)
-
-    // Create building_types table
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS building_types (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        type VARCHAR(255) NOT NULL UNIQUE
-      )
-    `)
-
-    // Create villages table (will be populated externally)
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS villages (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE
-      )
-    `)
-    // Create submissions table
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS submissions (
-        id VARCHAR(36) PRIMARY KEY,
-        timestamp DATETIME NOT NULL,
-        salesmanName VARCHAR(255) NOT NULL,
-        customerName VARCHAR(255) NOT NULL,
-        customerAddress TEXT NOT NULL,
-        village TEXT NOT NULL,
-        coordinates VARCHAR(255) NOT NULL,
-        buildingType VARCHAR(255) NOT NULL,
-        operators JSON NOT NULL
-      )
-    `)
-
-    // Create building_photos table
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS building_photos (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        submission_id VARCHAR(36) NOT NULL,
-        filename VARCHAR(255) NOT NULL,
-        FOREIGN KEY (submission_id) REFERENCES submissions(id)
-      )
-    `)
-
-    // Insert default data if tables are empty
-    const [salesmanRows] = await connection.execute<RowDataPacket[]>(
-      'SELECT COUNT(*) as count FROM salesman',
-    )
-    if (salesmanRows[0]?.count === 0) {
-      await connection.execute(`
-        INSERT INTO salesman (name) VALUES
-        ('Firtana'), ('Ahmad'), ('Budi'), ('Cindy'), ('Deni')
-      `)
-    }
-
-    const [buildingTypeRows] = await connection.execute<RowDataPacket[]>(
-      'SELECT COUNT(*) as count FROM building_types',
-    )
-    if (buildingTypeRows[0]?.count === 0) {
-      await connection.execute(`
-        INSERT INTO building_types (type) VALUES
-        ('Residential'), ('Commercial'), ('Industrial'), ('Mixed-Use'), ('Office'), ('Retail')
-      `)
-    }
-
-    connection.release()
-    console.log('Database initialized successfully')
-  } catch (error) {
-    console.error('Error initializing database:', error)
-  }
-}
-
-// Initialize database on startup
-initDatabase()
+// Note: Migrations are not run automatically on startup
+// Run migrations manually using: bun run migrate
 
 // Middleware
 app.use('*', logger())
@@ -291,7 +210,7 @@ app.post('/api/submit-form', async (c) => {
       'salesmanName',
       'customerName',
       'customerAddress',
-      'vilage',
+      'village',
       'coordinates',
       'buildingType',
     ]
@@ -361,7 +280,7 @@ app.post('/api/submit-form', async (c) => {
     await connection.execute(
       `INSERT INTO submissions
       (id, timestamp, salesmanName, customerName, customerAddress, village, coordinates, buildingType, operators)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         submission.id,
         submission.timestamp, // Now using the correctly formatted timestamp
@@ -440,6 +359,7 @@ app.get('/api/submissions', apiKeyAuth, async (c) => {
         salesmanName: row.salesmanName,
         customerName: row.customerName,
         customerAddress: row.customerAddress,
+        village: row.village, // Include village field that was missing
         coordinates: row.coordinates,
         buildingType: row.buildingType,
         operators: JSON.parse(row.operators),
@@ -478,7 +398,7 @@ app.get('/api/submissions/:id', apiKeyAuth, async (c) => {
       : []
 
     // Convert MySQL datetime to ISO format for API consistency
-    const timestamp = new Date(row.timestamp).toISOString()
+    const timestamp = new Date(row?.timestamp).toISOString()
 
     const submission = {
       id: row?.id,
@@ -486,6 +406,7 @@ app.get('/api/submissions/:id', apiKeyAuth, async (c) => {
       salesmanName: row?.salesmanName,
       customerName: row?.customerName,
       customerAddress: row?.customerAddress,
+      village: row?.village, // Include village field that was missing
       coordinates: row?.coordinates,
       buildingType: row?.buildingType,
       operators: JSON.parse(row?.operators),
