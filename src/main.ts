@@ -38,6 +38,7 @@ type FormSubmission = {
   salesmanName: string
   customerName: string
   customerAddress: string
+  village: string
   coordinates: string
   buildingType: string
   operators: string[]
@@ -76,6 +77,13 @@ const initDatabase = async () => {
       )
     `)
 
+    // Create villages table (will be populated externally)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS villages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE
+      )
+    `)
     // Create submissions table
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS submissions (
@@ -84,6 +92,7 @@ const initDatabase = async () => {
         salesmanName VARCHAR(255) NOT NULL,
         customerName VARCHAR(255) NOT NULL,
         customerAddress TEXT NOT NULL,
+        village TEXT NOT NULL,
         coordinates VARCHAR(255) NOT NULL,
         buildingType VARCHAR(255) NOT NULL,
         operators JSON NOT NULL
@@ -106,7 +115,7 @@ const initDatabase = async () => {
     )
     if (salesmanRows[0]?.count === 0) {
       await connection.execute(`
-        INSERT INTO salesman (name) VALUES 
+        INSERT INTO salesman (name) VALUES
         ('Firtana'), ('Ahmad'), ('Budi'), ('Cindy'), ('Deni')
       `)
     }
@@ -116,7 +125,7 @@ const initDatabase = async () => {
     )
     if (buildingTypeRows[0]?.count === 0) {
       await connection.execute(`
-        INSERT INTO building_types (type) VALUES 
+        INSERT INTO building_types (type) VALUES
         ('Residential'), ('Commercial'), ('Industrial'), ('Mixed-Use'), ('Office'), ('Retail')
       `)
     }
@@ -212,23 +221,23 @@ app.get('/api/salesman', async (c) => {
 // New endpoint: Search salesmen
 app.get('/api/salesman/search', async (c) => {
   try {
-    const query = c.req.query('query') || '';
-    
+    const query = c.req.query('query') || ''
+
     // If query is empty, return a limited set (e.g., top 20 salesmen)
     if (!query.trim()) {
       const [rows] = await pool.execute<RowDataPacket[]>(
-        'SELECT name FROM salesman ORDER BY name LIMIT 20'
-      );
+        'SELECT name FROM salesman ORDER BY name LIMIT 20',
+      )
       return c.json(rows.map((row) => row.name))
     }
-    
+
     // If query is provided, search with LIKE
-    const searchPattern = `%${query}%`;
+    const searchPattern = `%${query}%`
     const [rows] = await pool.execute<RowDataPacket[]>(
       'SELECT name FROM salesman WHERE name LIKE ? ORDER BY name LIMIT 50',
-      [searchPattern]
-    );
-    
+      [searchPattern],
+    )
+
     return c.json(rows.map((row) => row.name))
   } catch (error) {
     console.error('Error in /api/salesman/search:', error)
@@ -270,6 +279,7 @@ app.post('/api/submit-form', async (c) => {
       salesmanName: formData.get('salesmanName') as string,
       customerName: formData.get('customerName') as string,
       customerAddress: formData.get('customerAddress') as string,
+      village: formData.get('village') as string,
       coordinates: formData.get('coordinates') as string,
       buildingType: formData.get('buildingType') as string,
       operators: (formData.getAll('operators') as string[]) || [],
@@ -281,6 +291,7 @@ app.post('/api/submit-form', async (c) => {
       'salesmanName',
       'customerName',
       'customerAddress',
+      'vilage',
       'coordinates',
       'buildingType',
     ]
@@ -348,8 +359,8 @@ app.post('/api/submit-form', async (c) => {
 
     // Insert submission into database
     await connection.execute(
-      `INSERT INTO submissions 
-      (id, timestamp, salesmanName, customerName, customerAddress, coordinates, buildingType, operators) 
+      `INSERT INTO submissions
+      (id, timestamp, salesmanName, customerName, customerAddress, village, coordinates, buildingType, operators)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         submission.id,
@@ -357,6 +368,7 @@ app.post('/api/submit-form', async (c) => {
         submission.salesmanName,
         submission.customerName,
         submission.customerAddress,
+        submission.village,
         submission.coordinates,
         submission.buildingType,
         JSON.stringify(submission.operators),
@@ -556,6 +568,35 @@ app.post('/api/building-types', apiKeyAuth, async (c) => {
   } catch (error) {
     console.error('Error adding building type:', error)
     return c.json({ error: 'Server error' }, 500)
+  }
+})
+
+// Only keep the search villages endpoint - we don't need the get all villages endpoint
+// Search villages endpoint
+app.get('/api/villages/search', async (c) => {
+  try {
+    const query = c.req.query('query') || ''
+
+    // If query is empty, return a limited set (e.g., top 20 villages)
+    if (!query.trim()) {
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        'SELECT name FROM villages ORDER BY name LIMIT 20',
+      )
+      return c.json(rows.map((row) => row.name))
+    }
+
+    // If query is provided, search with LIKE
+    const searchPattern = `%${query}%`
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT name FROM villages WHERE name LIKE ? ORDER BY name LIMIT 50',
+      [searchPattern],
+    )
+
+    return c.json(rows.map((row) => row.name))
+  } catch (error) {
+    console.error('Error in /api/villages/search:', error)
+    // Return empty array instead of fallback data for search
+    return c.json([], 200)
   }
 })
 
