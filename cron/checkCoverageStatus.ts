@@ -91,5 +91,5 @@ async function runCronJob() {
 	}
 }
 
-// cron.schedule('*/5 * * * *', runCronJob); // Run every 5 minutes
-runCronJob(); // Uncomment this line to run the cron job immediately
+cron.schedule('*/5 * * * *', runCronJob); // Run every 5 minutes
+// runCronJob(); // Uncomment this line to run the cron job immediately
