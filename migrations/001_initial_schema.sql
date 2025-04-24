@@ -32,10 +32,15 @@ CREATE TABLE IF NOT EXISTS submissions (
   salesmanName VARCHAR(255) NOT NULL,
   customerName VARCHAR(255) NOT NULL,
   customerAddress TEXT NOT NULL,
+  customerHomeNo VARCHAR(255) NOT NULL,
   village TEXT NOT NULL,
   coordinates VARCHAR(255) NOT NULL,
   buildingType VARCHAR(255) NOT NULL,
-  operators JSON NOT NULL
+  operators JSON NOT NULL,
+  writeToAllOperatorSpreadsheetAt timestamp DEFAULT NULL,
+  writeToFSOperatorSpreadsheetAt timestamp DEFAULT NULL,
+  checkCoverageBotId int DEFAULT NULL,
+  checkCoverageBotFinish int DEFAULT 0
 );
 
 -- Create building_photos table

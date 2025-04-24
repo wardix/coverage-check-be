@@ -16,6 +16,9 @@ import {
   PORT,
   UPLOADS_DIR,
 } from './config'
+import { google } from 'googleapis'
+import axios from 'axios'
+import '../cron/checkCoverageStatus'; // Import the cron job
 
 // MySQL Database Configuration
 const dbConfig = {
@@ -30,6 +33,7 @@ const dbConfig = {
 
 // Create MySQL pool
 const pool = mysql.createPool(dbConfig)
+export { pool };
 
 // Define types
 type FormSubmission = {
@@ -38,6 +42,7 @@ type FormSubmission = {
   salesmanName: string
   customerName: string
   customerAddress: string
+  customerHomeNo: string
   village: string
   coordinates: string
   buildingType: string
@@ -51,6 +56,11 @@ type FormSubmission = {
  */
 function formatMySQLDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace('T', ' ')
+}
+
+function getCurrentDateTimeInGMT7(date: Date): string {
+  const gmt7Time = new Date(date.getTime() + 7 * 60 * 60 * 1000); // Add 7 hours to UTC
+  return gmt7Time.toISOString().slice(0, 19).replace('T', ' '); // Format as 'YYYY-MM-DD HH:mm:ss'
 }
 
 // Create app instance
@@ -198,6 +208,7 @@ app.post('/api/submit-form', async (c) => {
       salesmanName: formData.get('salesmanName') as string,
       customerName: formData.get('customerName') as string,
       customerAddress: formData.get('customerAddress') as string,
+      customerHomeNo: formData.get('customerHomeNo') as string,
       village: formData.get('village') as string,
       coordinates: formData.get('coordinates') as string,
       buildingType: formData.get('buildingType') as string,
@@ -210,6 +221,7 @@ app.post('/api/submit-form', async (c) => {
       'salesmanName',
       'customerName',
       'customerAddress',
+      'customerHomeNo',
       'village',
       'coordinates',
       'buildingType',
@@ -228,6 +240,8 @@ app.post('/api/submit-form', async (c) => {
         400,
       )
     }
+
+    let hasFSOperator = submission.operators?.includes('FS');
 
     // Handle file uploads
     const files = formData.getAll('buildingPhotos') as File[]
@@ -279,14 +293,15 @@ app.post('/api/submit-form', async (c) => {
     // Insert submission into database
     await connection.execute(
       `INSERT INTO submissions
-      (id, timestamp, salesmanName, customerName, customerAddress, village, coordinates, buildingType, operators)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, timestamp, salesmanName, customerName, customerAddress, customerHomeNo, village, coordinates, buildingType, operators)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         submission.id,
         submission.timestamp, // Now using the correctly formatted timestamp
         submission.salesmanName,
         submission.customerName,
         submission.customerAddress,
+        submission.customerHomeNo,
         submission.village,
         submission.coordinates,
         submission.buildingType,
@@ -306,6 +321,112 @@ app.post('/api/submit-form', async (c) => {
 
     await connection.commit()
     connection.release()
+
+    // send to spreadsheet
+    try {
+      const auth = new google.auth.GoogleAuth({
+        keyFile: process.env.SERVICE_ACCOUNT_JSON_KEY_FILE,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+      const authClient = await auth.getClient();
+      const sheets = google.sheets({ version: 'v4', auth: authClient });
+
+      const fsCheckCoverageSpreadsheetId = process.env.FS_CHECK_COVERAGE_SPREADSHEET;
+      const allCheckCoverageSpreadsheetId = process.env.ALL_CHECK_COVERAGE_SPREADSHEET;
+
+      const range = 'Sheet1!A1'; // Just specify the sheet, not actual last row
+
+      const values = [
+        submission.id,
+        getCurrentDateTimeInGMT7(now),
+        submission.customerName,
+        submission.customerAddress + ' ' + submission.village,
+        submission.customerHomeNo,
+        submission.coordinates,
+        submission.salesmanName,
+        submission.buildingType
+      ];
+      if (hasFSOperator) {
+        const response2 = await sheets.spreadsheets.values.append({
+          spreadsheetId: fsCheckCoverageSpreadsheetId,
+          range,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [values],
+          },
+        });
+        if (response2.status === 200 || response2.status === 201) {
+          await connection.execute(
+            `UPDATE submissions SET writeToFSOperatorSpreadsheetAt = ? WHERE id = ?`,
+            [formattedTimestamp, submission.id],
+          )
+        }
+      }
+
+      values.push(submission.operators?.join(', '));
+      const response1 = await sheets.spreadsheets.values.append({
+        spreadsheetId: allCheckCoverageSpreadsheetId,
+        range,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [values],
+        },
+      });
+      if (response1.status == 200 || response1.status == 201) {
+        await connection.execute(
+          `UPDATE submissions SET writeToAllOperatorSpreadsheetAt = ? WHERE id = ?`,
+          [formattedTimestamp, submission.id],
+        )
+      }
+    } catch (error) {
+      console.error('error send to google sheets', error);
+    }
+
+    // send to bot check coverage fs
+    if (hasFSOperator) {
+      try {
+        const url = process.env.FS_CHECK_COVERAGE_BOT_HOST + '/api/check-coverage';
+        const headers = {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.FS_CHECK_COVERAGE_BOT_API_KEY
+        };
+
+        const vill = submission.village?.split(',');
+        const residenceType = submission.buildingType === 'Ruko' ? 'ruko' : 'perumahan';
+        const residenceName = residenceType == 'ruko' ? 'ruko' : 'rumah';
+
+        const data = {
+          data: [
+          {
+            'operator': 'fiberstar',
+            'customer_name': submission.customerName,
+            'street_name': submission.customerAddress,
+            'home_no': submission.customerHomeNo,
+            'latitude': submission.coordinates?.split(',')[0],
+            'longitude': submission.coordinates?.split(',')[1],
+            'province': vill[4],
+            'city': vill[3],
+            'subdistrict': vill[2],
+            'village': vill[1],
+            'postal_code': vill[0],
+            'residence_type': residenceType,
+            'residence_name': residenceName
+          }]
+        }
+
+        // Make the POST request
+        const response = await axios.post(url, data, { headers });
+        if (response.status === 200 || response.status === 201) {
+          const checkCoverageBotId = response.data.data[0]?.id;
+          await connection.execute(
+            `UPDATE submissions SET checkCoverageBotId = ? WHERE id = ?`,
+            [checkCoverageBotId, submission.id],
+          )
+        }
+      } catch (error) {
+        console.error('Error sending to bot check coverage fs:', error)
+      }
+    }
 
     // Return ISO timestamp for API consistency, even though we store it differently in MySQL
     return c.json({
