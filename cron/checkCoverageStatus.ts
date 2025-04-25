@@ -66,7 +66,8 @@ async function runCronJob() {
 
 						const updateValues = [
 							isCovered ? 'Covered' : 'Not Covered',
-							content.homepassed_id ? content.homepassed_id : 'ini homepass id',
+							content.homepassed_id ? content.homepassed_id : '',
+							content.operator_remarks ? content.operator_remarks : ''
 						];
 
 						// Write to the spreadsheet
