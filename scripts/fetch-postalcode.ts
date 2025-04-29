@@ -317,6 +317,7 @@ const kota = [
   'kota binjai',
   'kota medan',
   'jakarta',
+  'deli serdang',
   'kota denpasar',
   'kab. badung',
   'kab. bangli',

@@ -3,7 +3,7 @@ import { serveStatic } from 'hono/bun'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { HTTPException } from 'hono/http-exception'
-import { mkdir, stat } from 'fs/promises'
+import { mkdir, stat, readFile } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
 import mysql, { type RowDataPacket } from 'mysql2/promise'
@@ -19,6 +19,7 @@ import {
 import { google } from 'googleapis'
 import axios from 'axios'
 import '../cron/checkCoverageStatus'; // Import the cron job
+import { createReadStream, existsSync } from 'fs'
 
 // MySQL Database Configuration
 const dbConfig = {
@@ -188,6 +189,39 @@ app.get('/api/building-types', async (c) => {
   }
 })
 
+app.get('/api/submissions/:id/photos/:filename', async (c) => {
+  try {
+    const submissionId = c.req.param('id');
+    const filename = c.req.param('filename');
+
+    // Validate that the file exists in the database for the given submission ID
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT filename FROM building_photos WHERE submission_id = ? AND filename = ?`,
+      [submissionId, filename]
+    );
+
+    if (rows.length === 0) {
+      return c.json({ error: 'Photo not found for this submission' }, 404);
+    }
+
+    // Construct the file path
+    const filePath = join(UPLOADS_DIR, filename);
+
+    // Check if the file exists on the server
+    if (!existsSync(filePath)) {
+      return c.json({ error: 'File not found on server' }, 404);
+    }
+
+    // Serve the file
+    const fileStream = createReadStream(filePath);
+    c.res.headers.set('Content-Type', 'application/octet-stream');
+    return new Response(fileStream);
+  } catch (error) {
+    console.error('Error fetching photo file:', error);
+    return c.json({ error: 'Server error' }, 500);
+  }
+});
+
 // Validate and save form submission
 app.post('/api/submit-form', async (c) => {
   let connection
@@ -344,7 +378,12 @@ app.post('/api/submit-form', async (c) => {
         submission.customerHomeNo,
         submission.coordinates,
         submission.salesmanName,
-        submission.buildingType
+        submission.buildingType,
+        submission.buildingPhotos
+          ? submission.buildingPhotos
+            .map((photo) => `${process.env.API_URL}/${process.env.APP_ENV === 'development' ? 'api' : 'xapi'}/submissions/${submission.id}/photos/${photo}`)
+            .join(', ')
+          : ''
       ];
       if (hasFSOperator) {
         const response2 = await sheets.spreadsheets.values.append({
@@ -392,30 +431,33 @@ app.post('/api/submit-form', async (c) => {
         };
 
         const vill = submission.village?.split(',');
-        const residenceType = submission.buildingType === 'Ruko' ? 'ruko' : 'perumahan';
+        const residenceType = submission.buildingType === 'ruko' ? 'ruko' : 'perumahan';
         const residenceName = residenceType == 'ruko' ? 'ruko' : 'rumah';
 
-        const data = {
-          data: [
-          {
-            'operator': 'fiberstar',
-            'customer_name': submission.customerName,
-            'street_name': submission.customerAddress,
-            'home_no': submission.customerHomeNo,
-            'latitude': submission.coordinates?.split(',')[0],
-            'longitude': submission.coordinates?.split(',')[1],
-            'province': vill[4],
-            'city': vill[3],
-            'subdistrict': vill[2],
-            'village': vill[1],
-            'postal_code': vill[0],
-            'residence_type': residenceType,
-            'residence_name': residenceName
-          }]
-        }
+        const payload = {
+          operator: 'fiberstar',
+          customer_name: submission.customerName,
+          street_name: submission.customerAddress,
+          home_no: submission.customerHomeNo,
+          latitude: submission.coordinates?.split(',')[0],
+          longitude: submission.coordinates?.split(',')[1],
+          province: vill[4],
+          city: vill[3],
+          subdistrict: vill[2],
+          village: vill[1],
+          postal_code: vill[0],
+          residence_type: residenceType,
+          residence_name: residenceName,
+          remarks: '',
+          file: submission.buildingPhotos
+            ? submission.buildingPhotos
+              .map((photo) => `${process.env.API_URL}/${process.env.APP_ENV === 'development' ? 'api' : 'xapi'}/submissions/${submission.id}/photos/${photo}`)
+              .join(', ')
+            : ''
+        };
 
         // Make the POST request
-        const response = await axios.post(url, data, { headers });
+        const response = await axios.post(url, payload, { headers });
         if (response.status === 200 || response.status === 201) {
           const checkCoverageBotId = response.data.data[0]?.id;
           await connection.execute(
