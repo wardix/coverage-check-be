@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   coordinates VARCHAR(255) NOT NULL,
   buildingType VARCHAR(255) NOT NULL,
   operators JSON NOT NULL,
-  writeToAllOperatorSpreadsheetAt timestamp DEFAULT NULL,
-  writeToFSOperatorSpreadsheetAt timestamp DEFAULT NULL,
+  writeToAllOperatorSpreadsheetAt DATETIME DEFAULT NULL,
+  writeToFSOperatorSpreadsheetAt DATETIME DEFAULT NULL,
   checkCoverageBotId int DEFAULT NULL,
   checkCoverageBotFinish int DEFAULT 0
 );

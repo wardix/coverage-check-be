@@ -118,11 +118,10 @@ async function connectToMySQL(config: DatabaseConfig): Promise<mysql.Connection>
   try {
     // Create connection to MySQL
     const connection = await mysql.createConnection({
-      host: config.host,
-      port: config.port,
-      user: config.username,
-      password: config.password,
-      database: config.database
+      host: process.env.DB_HOST,
+      password: process.env.DB_PASSWORD,
+      user: process.env.DB_USER,
+      database: process.env.DB_NAME
     });
     
     console.log('Connected to MySQL successfully');
@@ -314,10 +313,31 @@ async function queryPostalCodes(
 // Example usage
 // Using environment variables for DB configuration
 const dbConfig = getDatabaseConfigFromEnv();
-
-searchAndStorePostalCodes('jakarta', dbConfig)
-  .then(count => console.log(`Stored ${count} records`))
-  .catch(err => console.error('Error:', err));
+const kota = [
+  'kota binjai',
+  'kota medan',
+  'jakarta',
+  'deli serdang',
+  'kota denpasar',
+  'kab. badung',
+  'kab. bangli',
+  'kab. buleleng',
+  'kab. gianyar',
+  'kab. jembrana',
+  'kab. karangasem',
+  'kab. klungkung',
+  'kab. tabanan',
+];
+(async () => {
+  for (const city of kota) {
+    try {
+      const count = await searchAndStorePostalCodes(city, dbConfig);
+      console.log(`Stored ${count} records for "${city}"`);
+    } catch (error) {
+      console.error(`Error processing "${city}":`, error);
+    }
+  }
+})();
 
 export { 
   getIndonesianPostalCodes, 
