@@ -1,12 +1,16 @@
+import axios from 'axios'
+import { randomUUID } from 'crypto'
+import { createReadStream, existsSync } from 'fs'
+import { mkdir, stat } from 'fs/promises'
+import { google } from 'googleapis'
 import { Hono } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { cors } from 'hono/cors'
-import { logger } from 'hono/logger'
 import { HTTPException } from 'hono/http-exception'
-import { mkdir, stat, readFile } from 'fs/promises'
-import { join, extname } from 'path'
-import { randomUUID } from 'crypto'
+import { logger } from 'hono/logger'
 import mysql, { type RowDataPacket } from 'mysql2/promise'
+import { extname, join } from 'path'
+import '../cron/checkCoverageStatus'; // Import the cron job
 import {
   API_KEY,
   DB_HOST,
@@ -16,10 +20,6 @@ import {
   PORT,
   UPLOADS_DIR,
 } from './config'
-import { google } from 'googleapis'
-import axios from 'axios'
-import '../cron/checkCoverageStatus'; // Import the cron job
-import { createReadStream, existsSync } from 'fs'
 
 // MySQL Database Configuration
 const dbConfig = {
@@ -34,7 +34,7 @@ const dbConfig = {
 
 // Create MySQL pool
 const pool = mysql.createPool(dbConfig)
-export { pool };
+export { pool }
 
 // Define types
 type FormSubmission = {
@@ -104,7 +104,7 @@ app.use('/uploads/*', async (c, next) => {
   // Only serve valid file types
   const path = c.req.path.replace('/uploads/', '')
   const ext = extname(path).toLowerCase()
-  const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf']
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.mp4', '.mov', '.avi', '.webm']
 
   if (!allowedExts.includes(ext)) {
     return c.json({ error: 'File type not allowed' }, 403)
@@ -215,7 +215,7 @@ app.get('/api/submissions/:id/photos/:filename', async (c) => {
     // Serve the file
     const fileStream = createReadStream(filePath);
     c.res.headers.set('Content-Type', 'application/octet-stream');
-    return new Response(fileStream);
+    return new Response(fileStream as any);
   } catch (error) {
     console.error('Error fetching photo file:', error);
     return c.json({ error: 'Server error' }, 500);
@@ -363,7 +363,7 @@ app.post('/api/submit-form', async (c) => {
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });
       const authClient = await auth.getClient();
-      const sheets = google.sheets({ version: 'v4', auth: authClient });
+      const sheets = google.sheets({ version: 'v4', auth: authClient as any });
 
       const fsCheckCoverageSpreadsheetId = process.env.FS_CHECK_COVERAGE_SPREADSHEET;
       const allCheckCoverageSpreadsheetId = process.env.ALL_CHECK_COVERAGE_SPREADSHEET;
@@ -441,11 +441,11 @@ app.post('/api/submit-form', async (c) => {
           home_no: submission.customerHomeNo,
           latitude: submission.coordinates?.split(',')[0],
           longitude: submission.coordinates?.split(',')[1],
-          province: vill[4],
-          city: vill[3],
-          subdistrict: vill[2],
-          village: vill[1],
-          postal_code: vill[0],
+          province: vill?.[4],
+          city: vill?.[3],
+          subdistrict: vill?.[2],
+          village: vill?.[1],
+          postal_code: vill?.[0],
           residence_type: residenceType,
           residence_name: residenceName,
           remarks: '',
