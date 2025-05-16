@@ -54,19 +54,22 @@ async function runCronJob() {
 				if (response.status === 200) {
 					const content = response.data?.data;
 					const isCovered = content.is_covered;
+					const homepassedId = content.homepassed_id;
 
 					if (isCovered !== null) {
-						await pool.execute(
-							`UPDATE submissions SET checkCoverageBotFinish = ? WHERE id = ?`,
-							[1, submission.id]
-						);
+						if ((isCovered == 1 && homepassedId) || isCovered == 0) {
+							await pool.execute(
+								`UPDATE submissions SET checkCoverageBotFinish = ? WHERE id = ?`,
+								[1, submission.id]
+							);
+						}
 
 						const rowIndex = sheetIds.findIndex((row) => row[0] === submission.id);
-						const updateRange = "Sheet1!J" + (rowIndex + 1); // Assuming you want to update column J
+						const updateRange = "Sheet1!K" + (rowIndex + 1); // Assuming you want to update column J
 
 						const updateValues = [
 							isCovered ? 'Covered' : 'Not Covered',
-							content.homepassed_id ? content.homepassed_id : '',
+							homepassedId ? homepassedId : '',
 							content.operator_remarks ? content.operator_remarks : ''
 						];
 
