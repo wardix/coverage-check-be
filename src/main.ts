@@ -10,6 +10,7 @@ import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import mysql, { type RowDataPacket } from "mysql2/promise";
 import { extname, join } from "path";
+import "../cron/checkCoverageBot";
 import "../cron/checkCoverageStatus"; // Import the cron job
 import {
   API_KEY,
