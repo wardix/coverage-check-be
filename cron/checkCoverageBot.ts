@@ -11,7 +11,7 @@ async function runCronJob() {
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT id, customerName, customerAddress, customerHomeNo, village, coordinates, buildingType, remarks
          FROM submissions 
-         WHERE JSON_CONTAINS(operators, '"FS"') 
+         WHERE operators like '%FS%' 
          AND (checkCoverageBotId IS NULL OR checkCoverageBotId = '')
          LIMIT 10`
     );
