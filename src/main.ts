@@ -277,6 +277,7 @@ app.post("/api/submit-form", async (c) => {
       "coordinates",
       "buildingType",
     ];
+
     const missingFields = requiredFields.filter(
       (field) => !submission[field as keyof typeof submission]
     );
@@ -293,6 +294,24 @@ app.post("/api/submit-form", async (c) => {
               ? "operators"
               : ""
           }`,
+        },
+        400
+      );
+    }
+
+    // validate coordinates format
+    const coordinatesRegex = /^(\d+(\.\d+)?),\s*(\d+(\.\d+)?)$/;
+    if (
+      !(
+        submission?.coordinates &&
+        coordinatesRegex.test(submission?.coordinates)
+      )
+    ) {
+      if (connection) connection.release();
+      return c.json(
+        {
+          success: false,
+          message: `Missing validation fields: coordinates`,
         },
         400
       );
