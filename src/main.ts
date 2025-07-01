@@ -304,22 +304,10 @@ app.post("/api/submit-form", async (c) => {
     const files = formData.getAll("buildingPhotos") as File[];
 
     if (files && files.length > 0) {
-      if (files.length > 5) {
-        if (connection) connection.release();
-        return c.json(
-          {
-            success: false,
-            message: "Maximum 5 files allowed",
-          },
-          400
-        );
-      }
-
       // Check file sizes
-      const oversizedFiles = files.filter(
-        (file) => file.size > 10 * 1024 * 1024
-      );
-      if (oversizedFiles.length > 0) {
+      const maxFileSize = 10 * 1024 * 1024; // 10 MB in bytes
+      const totalFileSize = files.reduce((total, file) => total + file.size, 0);
+      if (totalFileSize > maxFileSize) {
         if (connection) connection.release();
         return c.json(
           {
