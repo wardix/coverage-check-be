@@ -300,7 +300,7 @@ app.post("/api/submit-form", async (c) => {
     }
 
     // validate coordinates format
-    const coordinatesRegex = /^(\d+(\.\d+)?),\s*(\d+(\.\d+)?)$/;
+    const coordinatesRegex = /^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/;
     if (
       !(
         submission?.coordinates &&
