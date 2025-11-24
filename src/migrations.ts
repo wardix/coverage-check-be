@@ -110,6 +110,8 @@ export async function migrate() {
     // Define migrations in order
     const migrations = [
       '001_initial_schema',
+      '002_add_branchid_to_salesman',
+      '003_add_branchid_to_submissions',
       // Add more migrations here as they are created
     ]
 

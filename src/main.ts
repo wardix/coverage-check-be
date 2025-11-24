@@ -354,6 +354,12 @@ app.post("/api/submit-form", async (c) => {
       }
     }
 
+    const [salesmanRows] = await pool.execute<RowDataPacket[]>(
+      "SELECT * FROM salesman WHERE name = ?",
+      [submission.salesmanName]
+    );
+    const salesman = salesmanRows ? salesmanRows[0] : null;
+
     // Insert submission into database
     await connection.execute(
       `INSERT INTO submissions
@@ -403,6 +409,19 @@ app.post("/api/submit-form", async (c) => {
 
       const range = "Sheet1!A1"; // Just specify the sheet, not actual last row
 
+      let branch = "Medan";
+      if (salesman && salesman['branchId'] == '062') {
+        branch = "Bali";
+      } else if (salesman && salesman['branchId'] == '025') {
+        branch = "Nusa Id";
+      } else if (salesman && salesman['branchId'] == '027') {
+        branch = "Binjai";
+      } else if (salesman && salesman['branchId'] == '028') {
+        branch = "Nusafiber Selecta";
+      } else if (salesman && salesman['branchId'] == '029') {
+        branch = "Tj. Morawa";
+      }
+
       const values = [
         submission.id,
         getCurrentDateTimeInGMT7(now),
@@ -423,6 +442,7 @@ app.post("/api/submit-form", async (c) => {
               .join(", ")
           : "",
         submission.remarks,
+        branch
       ];
       if (hasFSOperator) {
         const response2 = await sheets.spreadsheets.values.append({
