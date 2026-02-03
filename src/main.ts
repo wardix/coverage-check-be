@@ -110,8 +110,6 @@ app.use("/uploads/*", async (c, next) => {
     ".jpg",
     ".jpeg",
     ".png",
-    ".webp",
-    ".pdf",
     ".mp4",
   ];
 
