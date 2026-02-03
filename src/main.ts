@@ -110,13 +110,7 @@ app.use("/uploads/*", async (c, next) => {
     ".jpg",
     ".jpeg",
     ".png",
-    ".gif",
-    ".webp",
-    ".pdf",
     ".mp4",
-    ".mov",
-    ".avi",
-    ".webm",
   ];
 
   if (!allowedExts.includes(ext)) {
