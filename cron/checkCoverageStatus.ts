@@ -55,9 +55,10 @@ async function runCronJob() {
 					const content = response.data?.data;
 					const isCovered = content.is_covered;
 					const homepassedId = content.homepassed_id;
+					const ticketClosedDate = content.ticket_closed_date;
 
 					if (isCovered !== null) {
-						if ((isCovered == 1 && homepassedId) || isCovered == 0) {
+						if ((isCovered == 1 && homepassedId && ticketClosedDate) || isCovered == 0) {
 							await pool.execute(
 								`UPDATE submissions SET checkCoverageBotFinish = ? WHERE id = ?`,
 								[1, submission.id]
@@ -70,7 +71,8 @@ async function runCronJob() {
 						const updateValues = [
 							isCovered ? 'Covered' : 'Not Covered',
 							homepassedId ? homepassedId : '',
-							content.operator_remarks ? content.operator_remarks : ''
+							content.operator_remarks ? content.operator_remarks : '',
+							ticketClosedDate ? ticketClosedDate : ''
 						];
 
 						// Write to the spreadsheet

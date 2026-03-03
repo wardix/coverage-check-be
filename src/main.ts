@@ -106,18 +106,7 @@ app.use("/uploads/*", async (c, next) => {
   // Only serve valid file types
   const path = c.req.path.replace("/uploads/", "");
   const ext = extname(path).toLowerCase();
-  const allowedExts = [
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".webp",
-    ".pdf",
-    ".mp4",
-    ".mov",
-    ".avi",
-    ".webm",
-  ];
+  const allowedExts = [".jpg", ".jpeg", ".png", ".mp4"];
 
   if (!allowedExts.includes(ext)) {
     return c.json({ error: "File type not allowed" }, 403);
@@ -295,6 +284,7 @@ app.post("/api/submit-form", async (c) => {
       "coordinates",
       "buildingType",
     ];
+
     const missingFields = requiredFields.filter(
       (field) => !submission[field as keyof typeof submission],
     );
@@ -316,28 +306,34 @@ app.post("/api/submit-form", async (c) => {
       );
     }
 
+    // validate coordinates format
+    const coordinatesRegex = /^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/;
+    if (
+      !(
+        submission?.coordinates &&
+        coordinatesRegex.test(submission?.coordinates)
+      )
+    ) {
+      if (connection) connection.release();
+      return c.json(
+        {
+          success: false,
+          message: `Missing validation fields: coordinates`,
+        },
+        400,
+      );
+    }
+
     let hasFSOperator = submission.operators?.includes("FS");
 
     // Handle file uploads
     const files = formData.getAll("buildingPhotos") as File[];
 
     if (files && files.length > 0) {
-      if (files.length > 5) {
-        if (connection) connection.release();
-        return c.json(
-          {
-            success: false,
-            message: "Maximum 5 files allowed",
-          },
-          400,
-        );
-      }
-
       // Check file sizes
-      const oversizedFiles = files.filter(
-        (file) => file.size > 10 * 1024 * 1024,
-      );
-      if (oversizedFiles.length > 0) {
+      const maxFileSize = 10 * 1024 * 1024; // 10 MB in bytes
+      const totalFileSize = files.reduce((total, file) => total + file.size, 0);
+      if (totalFileSize > maxFileSize) {
         if (connection) connection.release();
         return c.json(
           {
@@ -364,6 +360,12 @@ app.post("/api/submit-form", async (c) => {
         }
       }
     }
+
+    const [salesmanRows] = await pool.execute<RowDataPacket[]>(
+      "SELECT * FROM salesman WHERE name = ?",
+      [submission.salesmanName],
+    );
+    const salesman = salesmanRows ? salesmanRows[0] : null;
 
     // Insert submission into database
     await connection.execute(
@@ -414,6 +416,19 @@ app.post("/api/submit-form", async (c) => {
 
       const range = "Sheet1!A1"; // Just specify the sheet, not actual last row
 
+      let branch = "Medan";
+      if (salesman && salesman["branchId"] == "062") {
+        branch = "Bali";
+      } else if (salesman && salesman["branchId"] == "025") {
+        branch = "Nusa Id";
+      } else if (salesman && salesman["branchId"] == "027") {
+        branch = "Binjai";
+      } else if (salesman && salesman["branchId"] == "028") {
+        branch = "Nusafiber Selecta";
+      } else if (salesman && salesman["branchId"] == "029") {
+        branch = "Tj. Morawa";
+      }
+
       const values = [
         submission.id,
         getCurrentDateTimeInGMT7(now),
@@ -434,6 +449,7 @@ app.post("/api/submit-form", async (c) => {
               .join(", ")
           : "",
         submission.remarks,
+        branch,
       ];
       if (hasFSOperator) {
         const response2 = await sheets.spreadsheets.values.append({
