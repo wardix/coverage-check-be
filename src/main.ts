@@ -705,9 +705,13 @@ app.post("/api/salesman", apiKeyAuth, async (c) => {
 
     // Get all salesmen to return in the response
     const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT name FROM salesman ORDER BY name",
+      "SELECT name, employee_id, branch_id FROM salesman ORDER BY name",
     );
-    const salesmanData = rows.map((row) => row.name);
+    const salesmanData = rows.map((row) => ({
+      name: row.name,
+      employee_id: row.employee_id,
+      branch_id: row.branch_id,
+    }));
 
     return c.json({ success: true, salesmanData });
   } catch (error) {
