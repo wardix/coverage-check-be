@@ -112,7 +112,7 @@ export async function migrate() {
       "001_initial_schema",
       "002_add_branchid_to_salesman",
       "003_add_branchid_to_submissions",
-      "003_add_employeeId_to_salesman",
+      "004_add_employeeid_to_salesman",
       // Add more migrations here as they are created
     ];
 
