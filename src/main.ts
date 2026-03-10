@@ -141,13 +141,13 @@ app.get("/api/health", (c) => {
 app.get("/api/salesman", async (c) => {
   try {
     const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT name, employee_id, branch_id FROM salesman ORDER BY name",
+      "SELECT name, employeeId, branchId FROM salesman ORDER BY name",
     );
     return c.json(
       rows.map((row) => ({
         name: row.name,
-        employee_id: row.employee_id,
-        branch_id: row.branch_id,
+        employee_id: row.employeeId,
+        branch_id: row.branchId,
       })),
     );
   } catch (error) {
@@ -164,13 +164,13 @@ app.get("/api/salesman/search", async (c) => {
     // If query is empty, return a limited set (e.g., top 20 salesmen)
     if (!query.trim()) {
       const [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT name, employee_id, branch_id FROM salesman ORDER BY name LIMIT 20",
+        "SELECT name, employeeId, branchId FROM salesman ORDER BY name LIMIT 20",
       );
       return c.json(
         rows.map((row) => ({
           name: row.name,
-          employee_id: row.employee_id,
-          branch_id: row.branch_id,
+          employee_id: row.employeeId,
+          branch_id: row.branchId,
         })),
       );
     }
@@ -178,15 +178,15 @@ app.get("/api/salesman/search", async (c) => {
     // If query is provided, search with LIKE
     const searchPattern = `%${query}%`;
     const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT name, employee_id, branch_id FROM salesman WHERE name LIKE ? OR employee_id LIKE ? OR branch_id LIKE ? ORDER BY name LIMIT 50",
+      "SELECT name, employeeId, branchId FROM salesman WHERE name LIKE ? OR employeeId LIKE ? OR branchId LIKE ? ORDER BY name LIMIT 50",
       [searchPattern, searchPattern, searchPattern],
     );
 
     return c.json(
       rows.map((row) => ({
         name: row.name,
-        employee_id: row.employee_id,
-        branch_id: row.branch_id,
+        employee_id: row.employeeId,
+        branch_id: row.branchId,
       })),
     );
   } catch (error) {
@@ -689,7 +689,7 @@ app.post("/api/salesman", apiKeyAuth, async (c) => {
 
     // Check if the salesman already exists
     const [existingRows] = await pool.execute<RowDataPacket[]>(
-      "SELECT * FROM salesman WHERE employee_id = ?",
+      "SELECT * FROM salesman WHERE employeeId = ?",
       [employee_id ? employee_id.trim() : ""],
     );
 
@@ -699,18 +699,18 @@ app.post("/api/salesman", apiKeyAuth, async (c) => {
 
     // Add the new salesman
     await pool.execute(
-      "INSERT INTO salesman (name, employee_id, branch_id) VALUES (?, ?, ?)",
+      "INSERT INTO salesman (name, employeeId, branchId) VALUES (?, ?, ?)",
       [name.trim(), employee_id.trim(), branch_id.trim()],
     );
 
     // Get all salesmen to return in the response
     const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT name, employee_id, branch_id FROM salesman ORDER BY name",
+      "SELECT name, employeeId, branchId FROM salesman ORDER BY name",
     );
     const salesmanData = rows.map((row) => ({
       name: row.name,
-      employee_id: row.employee_id,
-      branch_id: row.branch_id,
+      employee_id: row.employeeId,
+      branch_id: row.branchId,
     }));
 
     return c.json({ success: true, salesmanData });

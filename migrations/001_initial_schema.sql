@@ -1,8 +1,6 @@
 -- Create salesman table
 CREATE TABLE IF NOT EXISTS salesman (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  employee_id VARCHAR(10) NOT NULL UNIQUE,
-  branch_id VARCHAR(3) NOT NULL,
   name VARCHAR(255) NOT NULL
 );
 
