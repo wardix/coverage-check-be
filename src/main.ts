@@ -720,6 +720,47 @@ app.post("/api/salesman", apiKeyAuth, async (c) => {
   }
 });
 
+// Delete a salesman by employeeId
+app.delete("/api/salesman/:employeeId", apiKeyAuth, async (c) => {
+  try {
+    const employeeId = c.req.param("employeeId");
+
+    if (!employeeId || employeeId.trim() === "") {
+      return c.json({ error: "Employee ID is required" }, 400);
+    }
+
+    // Check if salesman exists
+    const [existingRows] = await pool.execute<RowDataPacket[]>(
+      "SELECT * FROM salesman WHERE employeeId = ?",
+      [employeeId.trim()],
+    );
+
+    if (existingRows.length === 0) {
+      return c.json({ error: "Salesman not found" }, 404);
+    }
+
+    // Delete the salesman
+    await pool.execute("DELETE FROM salesman WHERE employeeId = ?", [
+      employeeId.trim(),
+    ]);
+
+    // Return updated list
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      "SELECT name, employeeId, branchId FROM salesman ORDER BY name",
+    );
+    const salesmanData = rows.map((row) => ({
+      name: row.name,
+      employee_id: row.employeeId,
+      branch_id: row.branchId,
+    }));
+
+    return c.json({ success: true, salesmanData });
+  } catch (error) {
+    console.error("Error deleting salesman:", error);
+    return c.json({ error: "Server error" }, 500);
+  }
+});
+
 // Add a new building type
 app.post("/api/building-types", apiKeyAuth, async (c) => {
   try {
