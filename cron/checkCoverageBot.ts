@@ -3,6 +3,21 @@ import { type RowDataPacket } from "mysql2/promise";
 import cron from "node-cron";
 import { pool } from "../src/main";
 
+const SERVICE_NAME = "cc.nusa.net.id (coverage-check-be)";
+
+async function notifyChat(text: string) {
+  const webhook = process.env.GOOGLE_CHAT_WEBHOOK_URL;
+  if (!webhook) {
+    console.error("GOOGLE_CHAT_WEBHOOK_URL is not set, skipping notification");
+    return;
+  }
+  try {
+    await axios.post(webhook, { text });
+  } catch (error) {
+    console.error("Failed to send Google Chat notification:", error);
+  }
+}
+
 async function runCronJob() {
   console.log("Running check coverage bot task every 15 minutes");
 
@@ -13,6 +28,8 @@ async function runCronJob() {
          FROM submissions 
          WHERE operators like '%FS%' 
          AND (checkCoverageBotId IS NULL OR checkCoverageBotId = '')
+         AND (checkCoverageBotFinish = 0 OR checkCoverageBotFinish = '')
+         AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
          LIMIT 10`
     );
 
@@ -22,6 +39,8 @@ async function runCronJob() {
     }
 
     console.log(`Found ${rows.length} submissions to process`);
+
+    const failures: string[] = [];
 
     // Process each submission
     for (const submission of rows) {
@@ -89,13 +108,34 @@ async function runCronJob() {
             `Error response from bot for submission ${submission.id}:`,
             response.status
           );
+          failures.push(
+            `• ${submission.id} (${submission.customerName}): bot response status ${response.status}`
+          );
         }
       } catch (error) {
         console.error(`Error processing submission ${submission.id}:`, error);
+        const reason = error instanceof Error ? error.message : String(error);
+        failures.push(
+          `• ${submission.id} (${submission.customerName}): ${reason}`
+        );
       }
+    }
+
+    if (failures.length > 0) {
+      await notifyChat(
+        `🚨 *Gagal sync ke FS bot*\n` +
+          `Sumber: ${SERVICE_NAME}\n` +
+          `Job: checkCoverageBot\n` +
+          `Gagal: ${failures.length} dari ${rows.length} submission\n` +
+          failures.join("\n")
+      );
     }
   } catch (error) {
     console.error("Error in check coverage bot cron job:", error);
+    const reason = error instanceof Error ? error.message : String(error);
+    await notifyChat(
+      `🚨 *Cron checkCoverageBot error*\nSumber: ${SERVICE_NAME}\n${reason}`
+    );
   }
 }
 
