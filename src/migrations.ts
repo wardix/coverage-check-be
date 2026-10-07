@@ -113,6 +113,7 @@ export async function migrate() {
       "002_add_branchid_to_salesman",
       // "003_add_branchid_to_submissions",
       "004_add_employeeid_to_salesman",
+      "005_add_servicetype_to_submissions",
       // Add more migrations here as they are created
     ];
 

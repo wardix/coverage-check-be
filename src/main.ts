@@ -1,7 +1,7 @@
 import axios from "axios";
 import { randomUUID } from "crypto";
 import { createReadStream, existsSync } from "fs";
-import { mkdir, stat } from "fs/promises";
+import { mkdir, readFile, stat } from "fs/promises";
 import { google } from "googleapis";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
@@ -48,6 +48,7 @@ type FormSubmission = {
   village: string;
   coordinates: string;
   buildingType: string;
+  serviceType: string;
   operators: string[];
   buildingPhotos?: string[];
   remarks?: string;
@@ -269,6 +270,7 @@ app.post("/api/submit-form", async (c) => {
       village: formData.get("village") as string,
       coordinates: formData.get("coordinates") as string,
       buildingType: formData.get("buildingType") as string,
+      serviceType: formData.get("serviceType") as string,
       operators: (formData.getAll("operators") as string[]) || [],
       buildingPhotos: [],
       remarks: formData.get("remarks") as string,
@@ -283,6 +285,7 @@ app.post("/api/submit-form", async (c) => {
       "village",
       "coordinates",
       "buildingType",
+      "serviceType",
     ];
 
     const missingFields = requiredFields.filter(
@@ -319,6 +322,18 @@ app.post("/api/submit-form", async (c) => {
         {
           success: false,
           message: `Missing validation fields: coordinates`,
+        },
+        400,
+      );
+    }
+
+    // validate customer home number length
+    if (submission.customerHomeNo && submission.customerHomeNo.length > 40) {
+      if (connection) connection.release();
+      return c.json(
+        {
+          success: false,
+          message: "customerHomeNo must be at most 40 characters",
         },
         400,
       );
@@ -370,8 +385,8 @@ app.post("/api/submit-form", async (c) => {
     // Insert submission into database
     await connection.execute(
       `INSERT INTO submissions
-      (id, timestamp, salesmanName, customerName, customerAddress, customerHomeNo, village, coordinates, buildingType, operators, remarks)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, timestamp, salesmanName, customerName, customerAddress, customerHomeNo, village, coordinates, buildingType, serviceType, operators, remarks)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         submission.id,
         submission.timestamp, // Now using the correctly formatted timestamp
@@ -382,6 +397,7 @@ app.post("/api/submit-form", async (c) => {
         submission.village,
         submission.coordinates,
         submission.buildingType,
+        submission.serviceType,
         JSON.stringify(submission.operators),
         submission.remarks,
       ],
@@ -457,7 +473,7 @@ app.post("/api/submit-form", async (c) => {
           range,
           valueInputOption: "USER_ENTERED",
           requestBody: {
-            values: [values],
+            values: [[...values, submission.serviceType]],
           },
         });
         if (response2.status === 200 || response2.status === 201) {
@@ -468,7 +484,7 @@ app.post("/api/submit-form", async (c) => {
         }
       }
 
-      values.push(submission.operators?.join(", "));
+      values.push(submission.operators?.join(", "), submission.serviceType);
       const response1 = await sheets.spreadsheets.values.append({
         spreadsheetId: allCheckCoverageSpreadsheetId,
         range,
@@ -570,15 +586,36 @@ app.post("/api/submit-form", async (c) => {
 });
 
 // List submissions (protected admin endpoint)
+// Supports pagination via `page` (default 1) and `limit` (default 100, max 100) query params.
+// With no query params, returns the 100 most recent submissions.
 app.get("/api/submissions", apiKeyAuth, async (c) => {
+  const DEFAULT_LIMIT = 100;
+  const MAX_LIMIT = 100;
+
+  let page = parseInt(c.req.query("page") || "1", 10);
+  if (!Number.isInteger(page) || page < 1) page = 1;
+
+  let limit = parseInt(c.req.query("limit") || String(DEFAULT_LIMIT), 10);
+  if (!Number.isInteger(limit) || limit < 1) limit = DEFAULT_LIMIT;
+  if (limit > MAX_LIMIT) limit = MAX_LIMIT;
+
+  const offset = (page - 1) * limit;
+
   try {
-    const [submissionsRows] = await pool.execute<RowDataPacket[]>(`
-      SELECT s.*, GROUP_CONCAT(bp.filename) as photo_filenames
+    const [countRows] = await pool.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) as total FROM submissions",
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const [submissionsRows] = await pool.query<RowDataPacket[]>(
+      `SELECT s.*, GROUP_CONCAT(bp.filename) as photo_filenames
       FROM submissions s
       LEFT JOIN building_photos bp ON s.id = bp.submission_id
       GROUP BY s.id
       ORDER BY s.timestamp DESC
-    `);
+      LIMIT ? OFFSET ?`,
+      [limit, offset],
+    );
 
     // Format the data to match the expected structure
     const submissions = submissionsRows.map((row) => {
@@ -598,6 +635,7 @@ app.get("/api/submissions", apiKeyAuth, async (c) => {
         village: row.village, // Include village field that was missing
         coordinates: row.coordinates,
         buildingType: row.buildingType,
+        serviceType: row.serviceType,
         operators:
           typeof row?.operators === "string"
             ? JSON.parse(row?.operators)
@@ -607,10 +645,24 @@ app.get("/api/submissions", apiKeyAuth, async (c) => {
       };
     });
 
-    return c.json(submissions);
+    return c.json({
+      data: submissions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      },
+    });
   } catch (error) {
     console.error("Error fetching submissions:", error);
-    return c.json([], 200);
+    return c.json(
+      {
+        data: [],
+        pagination: { page, limit, total: 0, totalPages: 1 },
+      },
+      200,
+    );
   }
 });
 
@@ -649,6 +701,7 @@ app.get("/api/submissions/:id", apiKeyAuth, async (c) => {
       village: row?.village, // Include village field that was missing
       coordinates: row?.coordinates,
       buildingType: row?.buildingType,
+      serviceType: row?.serviceType,
       operators:
         typeof row?.operators === "string"
           ? JSON.parse(row?.operators)
@@ -824,6 +877,41 @@ app.get("/api/villages/search", async (c) => {
     // Return empty array instead of fallback data for search
     return c.json([], 200);
   }
+});
+
+// Raw OpenAPI spec
+app.get("/api/openapi.yaml", async (c) => {
+  try {
+    const spec = await readFile(join(process.cwd(), "openapi.yaml"), "utf8");
+    return c.text(spec, 200, { "Content-Type": "application/yaml" });
+  } catch (error) {
+    console.error("Error reading OpenAPI spec:", error);
+    return c.json({ error: "OpenAPI spec not found" }, 404);
+  }
+});
+
+// API docs page (Swagger UI, rendered from the OpenAPI spec above)
+app.get("/api/docs", (c) => {
+  return c.html(`<!DOCTYPE html>
+<html>
+  <head>
+    <title>Coverage Check API Docs</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.onload = () => {
+        SwaggerUIBundle({
+          url: "/api/openapi.yaml",
+          dom_id: "#swagger-ui",
+        });
+      };
+    </script>
+  </body>
+</html>`);
 });
 
 // Catch-all route to serve the Next.js frontend

@@ -1,0 +1,520 @@
+openapi: 3.0.3
+info:
+  title: Coverage Check API
+  description: >
+    API for the field-sales coverage-check form. Salesmen submit a customer
+    address/location (with photos); submissions are stored in MySQL, logged to
+    Google Sheets, and — for submissions covering the "FS" (Fiberstar)
+    operator — forwarded to an external coverage-checking bot.
+  version: "1.0.0"
+servers:
+  - url: /
+    description: Relative to whatever host serves this API
+
+tags:
+  - name: Health
+  - name: Salesman
+  - name: Building Types
+  - name: Villages
+  - name: Submissions
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /api/salesman:
+    get:
+      tags: [Salesman]
+      summary: List all salesmen
+      responses:
+        "200":
+          description: List of salesmen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesmanSummary"
+    post:
+      tags: [Salesman]
+      summary: Add a new salesman
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, employee_id, branch_id]
+              properties:
+                name:
+                  type: string
+                employee_id:
+                  type: string
+                branch_id:
+                  type: string
+      responses:
+        "200":
+          description: Salesman created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  salesmanData:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SalesmanSummary"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          description: Salesman already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+
+  /api/salesman/search:
+    get:
+      tags: [Salesman]
+      summary: Search salesmen by name, employee ID, or branch ID
+      parameters:
+        - name: query
+          in: query
+          description: Search text. Empty/omitted returns the top 20 salesmen.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching salesmen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesmanSummary"
+
+  /api/salesman/{employeeId}:
+    delete:
+      tags: [Salesman]
+      summary: Delete a salesman by employee ID
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Salesman deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  salesmanData:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SalesmanSummary"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Salesman not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+
+  /api/building-types:
+    get:
+      tags: [Building Types]
+      summary: List all building types
+      responses:
+        "200":
+          description: List of building types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["perumahan", "ruko"]
+    post:
+      tags: [Building Types]
+      summary: Add a new building type
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+      responses:
+        "200":
+          description: Building type created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  buildingTypes:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          description: Building type already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+
+  /api/villages/search:
+    get:
+      tags: [Villages]
+      summary: Search postal-code/village lookups
+      parameters:
+        - name: query
+          in: query
+          description: >
+            Search text matched against postal code, village, district, or
+            city. Empty/omitted returns up to 5 results.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: >
+            Matching entries, formatted as
+            "postal_code, village, district, city, province"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example:
+                  ["20111, Village, District, Medan, Sumatera Utara"]
+
+  /api/submit-form:
+    post:
+      tags: [Submissions]
+      summary: Submit a coverage-check form
+      description: >
+        Creates a submission, stores any uploaded building photos, and
+        (best-effort, failures are not surfaced to the caller) logs the
+        submission to Google Sheets and, when the "FS" operator is selected,
+        forwards it to the external coverage-checking bot.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - salesmanName
+                - customerName
+                - customerAddress
+                - customerHomeNo
+                - village
+                - coordinates
+                - buildingType
+                - serviceType
+                - operators
+              properties:
+                salesmanName:
+                  type: string
+                customerName:
+                  type: string
+                customerAddress:
+                  type: string
+                customerHomeNo:
+                  type: string
+                  maxLength: 40
+                village:
+                  type: string
+                coordinates:
+                  type: string
+                  description: "Format: `latitude,longitude`"
+                  example: "3.5952,98.6722"
+                buildingType:
+                  type: string
+                serviceType:
+                  type: string
+                  enum:
+                    - Broadband Home
+                    - Broadband Business
+                    - Dedicated
+                    - Migrasi
+                operators:
+                  type: array
+                  items:
+                    type: string
+                  description: Repeat this field once per selected operator.
+                buildingPhotos:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Combined size must be under 10MB.
+                remarks:
+                  type: string
+      responses:
+        "200":
+          description: Submission created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  submissionId:
+                    type: string
+                    format: uuid
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Validation error (missing fields, bad coordinates, homeNo too long, files too large)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitError"
+
+  /api/submissions:
+    get:
+      tags: [Submissions]
+      summary: List submissions (paginated)
+      description: >
+        With no query params, returns the 100 most recent submissions.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 1-indexed page number. Defaults to 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Page size. Defaults to 100, capped at 100.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+      responses:
+        "200":
+          description: Paginated list of submissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Submission"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/submissions/{id}:
+    get:
+      tags: [Submissions]
+      summary: Get a single submission by ID
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Submission not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+
+  /api/submissions/{id}/photos/{filename}:
+    get:
+      tags: [Submissions]
+      summary: Fetch a building photo for a submission
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The photo file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Photo not found for this submission, or file missing on server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+    ErrorResponse:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+
+  schemas:
+    ErrorMessage:
+      type: object
+      properties:
+        error:
+          type: string
+
+    SubmitError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+
+    SalesmanSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        employee_id:
+          type: string
+        branch_id:
+          type: string
+
+    Submission:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        salesmanName:
+          type: string
+        customerName:
+          type: string
+        customerAddress:
+          type: string
+        village:
+          type: string
+        coordinates:
+          type: string
+        buildingType:
+          type: string
+        serviceType:
+          type: string
+          nullable: true
+        operators:
+          type: array
+          items:
+            type: string
+        remarks:
+          type: string
+          nullable: true
+        buildingPhotos:
+          type: array
+          items:
+            type: string
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
